@@ -1257,6 +1257,58 @@ describe("session config options", () => {
       populateSession();
     });
 
+    it("publishes the plan and leaves implementation to a plan-capable client", async () => {
+      (agent as any).clientCapabilities = { plan: {} };
+
+      const canUseTool = (agent as any).canUseTool(SESSION_ID);
+      const result = await canUseTool(
+        "ExitPlanMode",
+        { plan: "  # Plan\n\n1. Implement it.  " },
+        { signal: new AbortController().signal, suggestions: undefined, toolUseID: "toolu_plan" },
+      );
+
+      expect(capturedPermissionRequest).toBeNull();
+      expect(sessionUpdates).toEqual([
+        {
+          sessionId: SESSION_ID,
+          update: {
+            sessionUpdate: "plan_update",
+            plan: {
+              type: "markdown",
+              planId: "toolu_plan",
+              content: "# Plan\n\n1. Implement it.",
+            },
+          },
+        },
+      ]);
+      expect(result).toEqual({
+        behavior: "deny",
+        message:
+          "Your proposed plan was presented to the user. End this response without implementing it.",
+      });
+    });
+
+    it("uses the existing permission flow when a plan-capable client receives no plan text", async () => {
+      (agent as any).clientCapabilities = { plan: {} };
+      const canUseTool = (agent as any).canUseTool(SESSION_ID);
+
+      await expect(
+        canUseTool(
+          "ExitPlanMode",
+          { plan: "   " },
+          {
+            signal: new AbortController().signal,
+            suggestions: undefined,
+            toolUseID: "toolu_empty",
+          },
+        ),
+      ).rejects.toThrow("Tool use aborted");
+
+      expect(capturedPermissionRequest).not.toBeNull();
+      expect(sessionUpdates).toHaveLength(1);
+      expect(sessionUpdates[0].update.sessionUpdate).toBe("tool_call");
+    });
+
     it("omits the `auto` option on a model without supportsAutoMode", async () => {
       const session = (agent as unknown as { sessions: Record<string, any> }).sessions[SESSION_ID];
       // Haiku-shaped session: availableModes does NOT include `auto`.

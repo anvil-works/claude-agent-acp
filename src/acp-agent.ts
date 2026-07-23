@@ -4465,6 +4465,28 @@ export class ClaudeAcpAgent {
       }
 
       if (toolName === "ExitPlanMode") {
+        // Plan-capable clients own the plan-to-implementation handoff. Publish the
+        // final plan, then deny ExitPlanMode so implementation requires a new turn.
+        const planMarkdown = typeof toolInput?.plan === "string" ? toolInput.plan.trim() : "";
+        if (this.clientCapabilities?.plan && planMarkdown.length > 0) {
+          await this.client.sessionUpdate({
+            sessionId,
+            update: {
+              sessionUpdate: "plan_update",
+              plan: {
+                type: "markdown",
+                planId: toolUseID,
+                content: planMarkdown,
+              },
+            },
+          });
+          return {
+            behavior: "deny",
+            message:
+              "Your proposed plan was presented to the user. End this response without implementing it.",
+          };
+        }
+
         const optionsAll: PermissionOption[] = [
           { kind: "allow_always", name: 'Yes, and use "auto" mode', optionId: "auto" },
           {
